@@ -12,6 +12,7 @@ from datetime import datetime
 from app.utils.time_utils import format_timestamp_to_ist
 import json
 import time
+import asyncio
 
 def get_selected_accounts():
     """Get accounts to display based on user selection"""
@@ -471,11 +472,10 @@ def api_option_chain(underlying):
 
 @trading_bp.route('/api/option-chain/stream/<underlying>')
 @login_required
-def option_chain_stream(underlying):
+async def option_chain_stream(underlying):
     """Get real-time option chain updates via server-sent events"""
     from app.utils.background_service import option_chain_service
     import json
-    import time
     
     # Get expiry from query params
     expiry = request.args.get('expiry')
@@ -484,7 +484,7 @@ def option_chain_stream(underlying):
     current_app.logger.debug(f"[SSE] Starting stream for {underlying} with expiry {expiry}")
     current_app.logger.debug(f"[SSE] Active managers: {list(option_chain_service.active_managers.keys())}")
     
-    def generate():
+    async def generate():
         # Determine the manager key to use
         manager_key = f"{underlying}_{expiry}" if expiry else None
         
@@ -540,7 +540,7 @@ def option_chain_stream(underlying):
                     yield f"data: {json.dumps({'status': 'inactive', 'message': f'Option chain not active for {underlying} {expiry or ""}'})}\n\n"
                 
                 # Update every second
-                time.sleep(1)
+                await asyncio.sleep(1)
                 
             except GeneratorExit:
                 # print(f"[SSE] Client disconnected from {underlying} stream")
@@ -676,14 +676,14 @@ def start_option_chains():
 
 @trading_bp.route('/api/option-chain/sse')
 @login_required
-def option_chain_sse():
+async def option_chain_sse():
     """Server-Sent Events endpoint for live option chain updates"""
     
     # Capture request parameters before entering generator
     underlying = request.args.get('underlying', 'NIFTY')
     expiry = request.args.get('expiry')
     
-    def generate():
+    async def generate():
         """Generate SSE stream"""
         # Get option chain manager
         option_manager = OptionChainManager(underlying, expiry)
@@ -697,7 +697,7 @@ def option_chain_sse():
                 yield f"data: {json.dumps(chain_data)}\n\n"
                 
                 # Wait before next update
-                time.sleep(1)  # Update every second
+                await asyncio.sleep(1)  # Update every second
                 
             except Exception as e:
                 current_app.logger.error(f"SSE stream error: {e}")
@@ -1506,7 +1506,7 @@ def get_risk_status():
 
 @trading_bp.route('/api/risk-status/stream')
 @login_required
-def risk_status_stream():
+async def risk_status_stream():
     """SSE endpoint for real-time risk monitoring updates"""
     from app.models import Strategy, StrategyExecution
     from app.utils.background_service import option_chain_service
@@ -1838,7 +1838,7 @@ def risk_status_stream():
         except Exception as e:
             return None
 
-    def generate():
+    async def generate():
         import traceback
         refresh_counter = 0
         while True:
@@ -2175,7 +2175,7 @@ def risk_status_stream():
                 yield f"data: {data_json}\n\n"
 
                 # Update every second
-                time.sleep(1)
+                await asyncio.sleep(1)
 
             except GeneratorExit:
                 break
